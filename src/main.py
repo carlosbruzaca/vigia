@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Request
-from pydantic import BaseModel
-from typing import Optional
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VigIA API")
 
@@ -11,7 +13,5 @@ async def health_check():
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
     data = await request.json()
-    print(f"Mensagem recebida: {data}")
-    
-    # Por enquanto só retorna OK
+    logger.info(f"MENSAGEM RECEBIDA: {data}")
     return {"ok": True}
