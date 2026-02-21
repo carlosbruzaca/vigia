@@ -99,16 +99,19 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     message_text_lower = message_text.lower().strip() if message_text else ""
     
     if message_text_lower.startswith("/ajuda") or message_text_lower.startswith("/help"):
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="📋 *Ajuda - VigIA*\n\n"
-                 "💰 /receita <valor> - Registrar faturamento\n"
-                 "📤 /despesa <valor> - Registrar despesa\n"
-                 "📊 /relatorio - Ver situação atual\n"
-                 "📑 /ajuda - Esta mensagem\n\n"
-                 "💡 Use /relatorio para ver a situação do seu caixa!",
-            parse_mode="Markdown"
-        )
+        logger.info(f"Ajuda chamada por {chat_id}: {message_text}")
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="📋 AJUDA - VigIA\n\n"
+                     "/receita <valor> - Registrar faturamento\n"
+                     "/despesa <valor> - Registrar despesa\n"
+                     "/relatorio - Ver situacao atual\n"
+                     "/ajuda - Esta mensagem\n\n"
+                     "Use /relatorio para ver a situacao do seu caixa!"
+            )
+        except Exception as e:
+            logger.error(f"Erro ao enviar ajuda: {e}")
         return
 
     if state == "new":
