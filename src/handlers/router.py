@@ -105,14 +105,11 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if state == "new":
         if message_text_lower.startswith("/start"):
-            await _send_welcome_message(update, context, user)
+            from src.database import get_supabase
+            get_supabase().table("vigia_users").update({"state": "onboarding"}).eq("id", user["id"]).execute()
+            await _delegate_to_onboarding(update, context, user, message_text)
         else:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"👋 Olá! Para começar, digite /start"
-            )
-    elif state == "onboarding":
-        await _send_welcome_message(update, context, user)
+            await _send_welcome_message(update, context, user)
     elif state == "onboarding":
         await _delegate_to_onboarding(update, context, user, message_text)
     elif state == "active":
@@ -153,9 +150,6 @@ async def _send_welcome_message(update: Update, context: ContextTypes.DEFAULT_TY
 Digite /start quando quiser começar!"""
     
     await context.bot.send_message(chat_id=chat_id, text=message)
-    
-    from src.database import get_supabase
-    get_supabase().table("vigia_users").update({"state": "onboarding"}).eq("id", user["id"]).execute()
 
 
 async def _delegate_to_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict, message_text: str | None) -> None:
