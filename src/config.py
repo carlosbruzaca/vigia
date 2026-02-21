@@ -6,6 +6,7 @@ class Settings(BaseSettings):
 
     supabase_url: str
     supabase_key: str
+    supabase_service_role_key: str | None = None
     telegram_bot_token: str
     environment: str = "development"
     log_level: str = "INFO"

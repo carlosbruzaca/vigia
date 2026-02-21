@@ -1,39 +1,126 @@
+import logging
 from telegram import Update
-from telegram.ext import ContextTypes
-from src.services import supabase as supabase_service
-from src.services.telegram import send_message
+from telegram.ext import ContextTypes, Application
+from src.database import get_supabase, get_supabase_admin
+
+logger = logging.getLogger(__name__)
+
+
+def get_user_by_chat_id(chat_id: int) -> dict | None:
+    supabase = get_supabase()
+    result = supabase.table("vigia_users").select("*").eq("chat_id", chat_id).execute()
+    if result.data:
+        return result.data[0]
+    return None
+
+
+def get_company_by_id(company_id: str) -> dict | None:
+    supabase = get_supabase()
+    result = supabase.table("vigia_companies").select("*").eq("id", company_id).execute()
+    if result.data:
+        return result.data[0]
+    return None
+
+
+def create_company(first_name: str, chat_id: int) -> dict:
+    supabase = get_supabase_admin()
+    company_name = f"{first_name} - Empresa"
+    result = supabase.table("vigia_companies").insert({
+        "name": company_name,
+        "status": "trial",
+        "plan": "early_adopter",
+        "fixed_cost_avg": 0,
+        "variable_cost_percent": 30,
+        "cash_minimum": 5000,
+        "chat_id": chat_id
+    }).execute()
+    return result.data[0]
+
+
+def create_user(chat_id: int, telegram_id: int, first_name: str, company_id: str) -> dict:
+    supabase = get_supabase_admin()
+    result = supabase.table("vigia_users").insert({
+        "chat_id": chat_id,
+        "telegram_id": telegram_id,
+        "first_name": first_name,
+        "state": "new",
+        "onboarding_step": 0,
+        "company_id": company_id
+    }).execute()
+    return result.data[0]
+
+
+def update_last_interaction(user_id: str) -> None:
+    supabase = get_supabase()
+    supabase.table("vigia_users").update({
+        "last_interaction_at": "now()"
+    }).eq("id", user_id).execute()
 
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    telegram_id = update.effective_user.id
-    user = supabase_service.get_user_by_telegram_id(telegram_id)
-    
-    if user is None:
-        await update.message.reply_text("Bem-vindo! Vou guiar você pelo cadastro.")
-        from src.handlers.onboarding import start_onboarding
-        await start_onboarding(update, context)
-    else:
-        await update.message.reply_text(f"Olá, {user.name}! Como posso ajudar?")
+    await update.message.reply_text("Bem-vindo! Vou guiar você pelo cadastro.")
 
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    telegram_id = update.effective_user.id
-    user = supabase_service.get_user_by_telegram_id(telegram_id)
-    
-    if user is None:
-        await handle_start(update, context)
+async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = update.effective_chat.id
+    telegram_user_id = update.effective_user.id
+    first_name = update.effective_user.first_name or "Usuário"
+    last_name = update.effective_user.last_name
+    username = update.effective_user.username
+    message_text = update.message.text if update.message else None
+    message_id = update.message.message_id if update.message else None
+    date = update.message.date.timestamp() if update.message else None
+
+    if not chat_id:
+        logger.warning(f"chat_id ausente na mensagem de {telegram_user_id}")
         return
-    
-    state = user.state
-    
-    if state == "onboarding_name":
-        from src.handlers.onboarding import handle_name
-        await handle_name(update, context, user)
-    elif state == "onboarding_company":
-        from src.handlers.onboarding import handle_company
-        await handle_company(update, context, user)
-    elif state == "operation":
-        from src.handlers.operation import handle_operation
-        await handle_operation(update, context, user)
+
+    user = get_user_by_chat_id(chat_id)
+
+    if user is None:
+        try:
+            company = create_company(first_name, chat_id)
+            user = create_user(chat_id, telegram_user_id, first_name, company["id"])
+            logger.info(f"Novo usuário criado: {user['id']}, empresa: {company['id']}")
+        except Exception as e:
+            logger.error(f"Erro ao criar usuário/empresa: {e}")
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="❌ Erro técnico. Tente novamente em alguns minutos."
+            )
+            return
+
+    try:
+        update_last_interaction(user["id"])
+    except Exception:
+        pass
+
+    state = user.get("state", "new")
+
+    if state in ("new", "onboarding"):
+        await _delegate_to_onboarding(update, context, user, message_text)
+    elif state == "active":
+        await _delegate_to_operation(update, context, user, message_text)
+    elif state == "paused":
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="⏸️ Sua conta está temporariamente suspensa. Entre em contato com o suporte."
+        )
+    elif state == "blocked":
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ Sua conta foi cancelada. Para mais informações, entre em contato."
+        )
     else:
-        await update.message.reply_text("Use /start para começar.")
+        logger.warning(f"Estado desconhecido: {state}, tratando como new")
+        await _delegate_to_onboarding(update, context, user, message_text)
+
+
+async def _delegate_to_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict, message_text: str | None) -> None:
+    from src.handlers.onboarding import process_onboarding
+    await process_onboarding(update, context, user, message_text)
+
+
+async def _delegate_to_operation(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict, message_text: str | None) -> None:
+    from src.handlers.operation import process_operation
+    await process_operation(update, context, user, message_text)

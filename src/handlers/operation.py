@@ -1,67 +1,202 @@
+import logging
+from datetime import date
 from telegram import Update
 from telegram.ext import ContextTypes
-from src.services import supabase as supabase_service
-from src.models.entries import EntryCreate
-from src.utils.burn_rate import calculate_runway, calculate_monthly_burn
-from src.utils.formatters import format_company_status
+from src.database import get_supabase
+
+logger = logging.getLogger(__name__)
 
 
-async def handle_operation(update: Update, context: ContextTypes.DEFAULT_TYPE, user) -> None:
-    text = update.message.text.lower()
-    company = supabase_service.get_company(user.company_id)
+def get_company_by_id(company_id: str) -> dict | None:
+    supabase = get_supabase()
+    result = supabase.table("vigia_companies").select("*").eq("id", company_id).execute()
+    if result.data:
+        return result.data[0]
+    return None
+
+
+def get_entries_by_company(company_id: str) -> list[dict]:
+    supabase = get_supabase()
+    result = supabase.table("vigia_entries").select("*").eq("company_id", company_id).execute()
+    return result.data
+
+
+def create_entry(data: dict) -> dict:
+    supabase = get_supabase()
+    result = supabase.table("vigia_entries").insert(data).execute()
+    return result.data[0]
+
+
+def update_company(company_id: str, data: dict) -> dict | None:
+    supabase = get_supabase()
+    result = supabase.table("vigia_companies").update(data).eq("id", company_id).execute()
+    if result.data:
+        return result.data[0]
+    return None
+
+
+def calculate_cash_balance(company_id: str) -> float:
+    entries = get_entries_by_company(company_id)
+    cash = 0
+    for entry in entries:
+        if entry["type"] == "revenue":
+            cash += entry["amount"]
+        elif entry["type"] == "expense":
+            cash -= entry["amount"]
+    return cash
+
+
+def calculate_monthly_burn(company_id: str) -> float:
+    from datetime import date, timedelta
+    supabase = get_supabase()
+    start_date = (date.today() - timedelta(days=30)).isoformat()
+    result = supabase.table("vigia_entries").select("amount").eq("company_id", company_id).eq("type", "expense").gte("entry_date", start_date).execute()
+    total = sum(entry["amount"] for entry in result.data)
+    return total
+
+
+def format_currency(value: float) -> str:
+    return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+async def process_operation(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict, message_text: str | None) -> None:
+    chat_id = update.effective_chat.id
+    company_id = user.get("company_id")
+    first_name = user.get("first_name", "Usuário")
     
-    if not company:
-        await update.message.reply_text("Empresa não encontrada.")
+    if not company_id:
+        await context.bot.send_message(chat_id=chat_id, text="❌ Erro: empresa não encontrada")
         return
     
-    if text.startswith("/status"):
-        entries = supabase_service.get_entries_by_company(company.id)
-        entries_dict = [{"amount": e.amount, "entry_type": e.entry_type} for e in entries]
-        burn_rate = calculate_monthly_burn(entries_dict)
-        runway = calculate_runway(company.cash, burn_rate)
-        
-        await update.message.reply_text(
-            format_company_status(company.model_dump(), burn_rate, runway),
-            parse_mode="Markdown"
+    company = get_company_by_id(company_id)
+    if not company:
+        await context.bot.send_message(chat_id=chat_id, text="❌ Erro: empresa não encontrada")
+        return
+    
+    if not message_text:
+        await context.bot.send_message(chat_id=chat_id, text="❌ Mensagem vazia")
+        return
+    
+    text = message_text.lower().strip()
+    
+    if text.startswith("/start"):
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"Olá, {first_name}! Bem-vindo de volta.\n\n"
+                 "Comandos disponíveis:\n"
+                 "/receita - Registrar faturamento do dia\n"
+                 "/despesa - Registrar despesa do dia\n"
+                 "/relatorio - Ver situação atual\n"
+                 "/ajuda - Ver todos os comandos"
         )
-    elif text.startswith("/entrada"):
-        parts = text.split()
-        if len(parts) < 2:
-            await update.message.reply_text("Uso: /entrada <valor>")
-            return
-        try:
-            amount = float(parts[1].replace(",", "."))
-            entry = EntryCreate(
-                company_id=company.id,
-                entry_type="income",
-                amount=amount
-            )
-            supabase_service.create_entry(entry)
-            supabase_service.update_company(company.id, {"cash": company.cash + amount})
-            await update.message.reply_text(f"Entrada de R$ {amount} registrada!")
-        except ValueError:
-            await update.message.reply_text("Valor inválido.")
-    elif text.startswith("/saida") or text.startswith("/despesa"):
-        parts = text.split()
-        if len(parts) < 2:
-            await update.message.reply_text("Uso: /saida <valor>")
-            return
-        try:
-            amount = float(parts[1].replace(",", "."))
-            entry = EntryCreate(
-                company_id=company.id,
-                entry_type="expense",
-                amount=amount
-            )
-            supabase_service.create_entry(entry)
-            supabase_service.update_company(company.id, {"cash": company.cash - amount})
-            await update.message.reply_text(f"Saída de R$ {amount} registrada!")
-        except ValueError:
-            await update.message.reply_text("Valor inválido.")
+    elif text.startswith("/receita"):
+        await _handle_revenue(context, chat_id, company, text)
+    elif text.startswith("/despesa"):
+        await _handle_expense(context, chat_id, company, text)
+    elif text.startswith("/relatorio"):
+        await _handle_report(context, chat_id, company)
+    elif text.startswith("/ajuda"):
+        await _handle_help(context, chat_id)
     else:
-        await update.message.reply_text(
-            "Comandos disponíveis:\n"
-            "/status - Ver status da empresa\n"
-            "/entrada <valor> - Adicionar entrada\n"
-            "/saida <valor> - Adicionar despesa"
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❓ Comando não reconhecido.\n\n"
+                 "Use /ajuda para ver os comandos disponíveis."
         )
+
+
+async def _handle_revenue(context: ContextTypes.DEFAULT_TYPE, chat_id: int, company: dict, text: str) -> None:
+    parts = text.split()
+    if len(parts) < 2:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="📝 Para registrar uma receita, digite:\n/receita 1500"
+        )
+        return
+    
+    try:
+        value_str = parts[1].replace(",", ".")
+        amount = float(value_str)
+        if amount <= 0:
+            raise ValueError()
+    except ValueError:
+        await context.bot.send_message(chat_id=chat_id, text="❌ Valor inválido. Use: /receita 1500")
+        return
+    
+    create_entry({
+        "company_id": company["id"],
+        "entry_date": date.today().isoformat(),
+        "amount": amount,
+        "type": "revenue",
+        "source": "manual"
+    })
+    
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"✅ Receita de {format_currency(amount)} registrada!"
+    )
+
+
+async def _handle_expense(context: ContextTypes.DEFAULT_TYPE, chat_id: int, company: dict, text: str) -> None:
+    parts = text.split()
+    if len(parts) < 2:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="📝 Para registrar uma despesa, digite:\n/despesa 500"
+        )
+        return
+    
+    try:
+        value_str = parts[1].replace(",", ".")
+        amount = float(value_str)
+        if amount <= 0:
+            raise ValueError()
+    except ValueError:
+        await context.bot.send_message(chat_id=chat_id, text="❌ Valor inválido. Use: /despesa 500")
+        return
+    
+    create_entry({
+        "company_id": company["id"],
+        "entry_date": date.today().isoformat(),
+        "amount": amount,
+        "type": "expense",
+        "source": "manual"
+    })
+    
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"✅ Despesa de {format_currency(amount)} registrada!"
+    )
+
+
+async def _handle_report(context: ContextTypes.DEFAULT_TYPE, chat_id: int, company: dict) -> None:
+    cash_balance = calculate_cash_balance(company["id"])
+    monthly_burn = calculate_monthly_burn(company["id"])
+    fixed_cost = company.get("fixed_cost_avg", 0)
+    cash_minimum = company.get("cash_minimum", 5000)
+    
+    days_of_cash = monthly_burn / 30 if monthly_burn > 0 else 999
+    runway_days = cash_balance / (monthly_burn / 30) if monthly_burn > 0 else 999
+    
+    message = f"📊 *Relatório - {company.get('name', 'Empresa')}*\n\n"
+    message += f"💰 Caixa atual: {format_currency(cash_balance)}\n"
+    message += f"🔥 Burn rate mensal: {format_currency(monthly_burn)}\n"
+    message += f"📅 Custos fixos: {format_currency(fixed_cost)}/mês\n"
+    message += f"🛡️ Caixa mínimo: {format_currency(cash_minimum)}\n"
+    
+    if cash_balance < cash_minimum:
+        message += f"\n⚠️ *Atenção: Caixa abaixo do mínimo!*"
+    
+    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
+
+
+async def _handle_help(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="📋 *Comandos disponíveis*\n\n"
+             "/receita <valor> - Registrar faturamento\n"
+             "/despesa <valor> - Registrar despesa\n"
+             "/relatorio - Ver situação atual\n"
+             "/ajuda - Mostrar esta ajuda",
+        parse_mode="Markdown"
+    )
