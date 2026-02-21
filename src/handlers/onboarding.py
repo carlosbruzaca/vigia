@@ -84,7 +84,7 @@ async def process_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     current_step = get_current_step(company, user.get("onboarding_step", 0))
     
-    if not message_text or message_text.startswith("/"):
+    if not message_text or message_text.startswith("/") or user.get("onboarding_step", 0) == 0:
         await _send_onboarding_question(context, chat_id, current_step, company)
         return
     

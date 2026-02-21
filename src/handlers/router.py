@@ -97,7 +97,9 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     state = user.get("state", "new")
 
-    if state in ("new", "onboarding"):
+    if state == "new":
+        await _send_welcome_message(update, context, user)
+    elif state == "onboarding":
         await _delegate_to_onboarding(update, context, user, message_text)
     elif state == "active":
         await _delegate_to_operation(update, context, user, message_text)
@@ -114,6 +116,32 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     else:
         logger.warning(f"Estado desconhecido: {state}, tratando como new")
         await _delegate_to_onboarding(update, context, user, message_text)
+
+
+async def _send_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict) -> None:
+    chat_id = update.effective_chat.id
+    first_name = update.effective_user.first_name or "Usuário"
+    
+    message = f"""👋 Olá, {first_name}! Bem-vindo ao VigIA!
+
+🛡️ Sou seu guardião financeiro. Estou aqui para garantir que você saiba o que está acontecendo com o caixa da sua empresa - antes que o pior problema apareça: ficar sem dinheiro.
+
+💡 Como funciona:
+• Todo dia você me informa suas receitas e despesas
+• Todo dia 7h eu te mando um relatório com a situação do caixa
+• Se algo precisar de atenção, eu te aviso antes
+
+🚀 Para começar, é rápido! Preciso só de 3 informações:
+1. Seu custo fixo mensal
+2. Quanto % do faturamento vira custo variável
+3. Quanto você quer ter de caixa mínimo
+
+Digite /start quando quiser começar!"""
+    
+    await context.bot.send_message(chat_id=chat_id, text=message)
+    
+    from src.database import get_supabase
+    get_supabase().table("vigia_users").update({"state": "onboarding"}).eq("id", user["id"]).execute()
 
 
 async def _delegate_to_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict, message_text: str | None) -> None:
