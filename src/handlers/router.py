@@ -104,6 +104,14 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     if state == "new":
+        if message_text_lower.startswith("/start"):
+            await _send_welcome_message(update, context, user)
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"👋 Olá! Para começar, digite /start"
+            )
+    elif state == "onboarding":
         await _send_welcome_message(update, context, user)
     elif state == "onboarding":
         await _delegate_to_onboarding(update, context, user, message_text)
