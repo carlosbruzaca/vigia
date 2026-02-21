@@ -15,7 +15,8 @@ def get_company_by_id(company_id: str) -> dict | None:
 
 
 def update_company(company_id: str, data: dict) -> dict | None:
-    supabase = get_supabase()
+    from src.database import get_supabase_admin
+    supabase = get_supabase_admin()
     result = supabase.table("vigia_companies").update(data).eq("id", company_id).execute()
     if result.data:
         return result.data[0]
@@ -23,7 +24,8 @@ def update_company(company_id: str, data: dict) -> dict | None:
 
 
 def update_user(user_id: str, data: dict) -> dict | None:
-    supabase = get_supabase()
+    from src.database import get_supabase_admin
+    supabase = get_supabase_admin()
     result = supabase.table("vigia_users").update(data).eq("id", user_id).execute()
     if result.data:
         return result.data[0]
@@ -41,6 +43,11 @@ def get_current_step(company: dict, onboarding_step: int) -> int:
     if company.get("cash_minimum") is None or company.get("cash_minimum") == 5000:
         return 3
     return 4
+
+
+def is_waiting_for_input(company: dict, onboarding_step: int) -> bool:
+    step = get_current_step(company, onboarding_step)
+    return step < 4
 
 
 def parse_number(value: str) -> tuple[bool, float | None, str]:
@@ -84,7 +91,7 @@ async def process_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     current_step = get_current_step(company, user.get("onboarding_step", 0))
     
-    if message_text and not message_text.startswith("/") and user.get("onboarding_step", 0) > 0:
+    if message_text and not message_text.startswith("/") and is_waiting_for_input(company, user.get("onboarding_step", 0)):
         valid, value, error_msg = parse_number(message_text)
         if not valid:
             await context.bot.send_message(chat_id=chat_id, text=f"❌ Não entendi esse valor.\n\n{error_msg}")
