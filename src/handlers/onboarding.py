@@ -120,6 +120,7 @@ async def process_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE,
                      f"(impostos, comissões, matéria-prima)\n\n"
                      f"Digite um número de 0 a 100:"
             )
+            return
         elif current_step == 2:
             update_company(company_id, {"variable_cost_percent": value})
             update_user(user["id"], {"onboarding_step": 3, "current_action": "awaiting_cash_minimum"})
@@ -130,6 +131,7 @@ async def process_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE,
                      f"(ex: 10000 para cobrir 2 meses de custo fixo)\n\n"
                      f"Digite o valor:"
             )
+            return
         elif current_step == 3:
             update_company(company_id, {"cash_minimum": value})
             update_user(user["id"], {"onboarding_step": 4, "state": "active", "current_action": None})
