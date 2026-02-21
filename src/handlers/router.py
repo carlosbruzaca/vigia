@@ -98,9 +98,9 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     state = user.get("state", "new")
     message_text_lower = message_text.lower().strip() if message_text else ""
     
-    if message_text_lower.startswith("/ajuda"):
-        from src.handlers.operation import process_operation
-        await process_operation(update, context, user, message_text)
+    if message_text_lower.startswith("/ajuda") or message_text_lower.startswith("/help"):
+        from src.handlers.operation import _handle_help
+        await _handle_help(context, update.effective_chat.id)
         return
 
     if state == "new":

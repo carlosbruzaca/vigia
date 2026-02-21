@@ -95,7 +95,7 @@ async def process_operation(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await _handle_expense(context, chat_id, company, text)
     elif text.startswith("/relatorio"):
         await _handle_report(context, chat_id, company)
-    elif text.startswith("/ajuda"):
+    elif text.startswith("/ajuda") or text.startswith("/help"):
         await _handle_help(context, chat_id)
     else:
         await context.bot.send_message(
