@@ -84,54 +84,54 @@ async def process_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     current_step = get_current_step(company, user.get("onboarding_step", 0))
     
-    if not message_text or message_text.startswith("/") or user.get("onboarding_step", 0) == 0:
-        await _send_onboarding_question(context, chat_id, current_step, company)
+    if message_text and not message_text.startswith("/") and user.get("onboarding_step", 0) > 0:
+        valid, value, error_msg = parse_number(message_text)
+        if not valid:
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ Não entendi esse valor.\n\n{error_msg}")
+            return
+        
+        valid, error_msg = validate_input(value, current_step)
+        if not valid:
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ {error_msg}\n\nTente novamente:")
+            return
+        
+        if current_step == 1:
+            update_company(company_id, {"fixed_cost_avg": value})
+            update_user(user["id"], {"onboarding_step": 2, "current_action": "awaiting_variable_cost"})
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"✅ Custo fixo registrado: {format_currency(value)}\n\n"
+                     f"📊 Agora, qual porcentagem do seu faturamento vira custo variável?\n"
+                     f"(impostos, comissões, matéria-prima)\n\n"
+                     f"Digite um número de 0 a 100:"
+            )
+        elif current_step == 2:
+            update_company(company_id, {"variable_cost_percent": value})
+            update_user(user["id"], {"onboarding_step": 3, "current_action": "awaiting_cash_minimum"})
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"✅ Custo variável: {value}%\n\n"
+                     f"🛡️ Por último: qual valor mínimo de caixa você quer manter para se sentir seguro?\n"
+                     f"(ex: 10000 para cobrir 2 meses de custo fixo)\n\n"
+                     f"Digite o valor:"
+            )
+        elif current_step == 3:
+            update_company(company_id, {"cash_minimum": value})
+            update_user(user["id"], {"onboarding_step": 4, "state": "active", "current_action": None})
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"✅ Caixa mínimo: {format_currency(value)}\n\n"
+                     f"🎉 Configuração completa!\n\n"
+                     f"Amanhã cedo você recebe seu primeiro relatório.\n\n"
+                     f"Comandos disponíveis:\n"
+                     f"/receita - Registrar faturamento do dia\n"
+                     f"/despesa - Registrar despesa do dia\n"
+                     f"/relatorio - Ver situação atual agora\n"
+                     f"/ajuda - Ver todos os comandos"
+            )
         return
     
-    valid, value, error_msg = parse_number(message_text)
-    if not valid:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ Não entendi esse valor.\n\n{error_msg}")
-        return
-    
-    valid, error_msg = validate_input(value, current_step)
-    if not valid:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ {error_msg}\n\nTente novamente:")
-        return
-    
-    if current_step == 1:
-        update_company(company_id, {"fixed_cost_avg": value})
-        update_user(user["id"], {"onboarding_step": 2, "current_action": "awaiting_variable_cost"})
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"✅ Custo fixo registrado: {format_currency(value)}\n\n"
-                 f"📊 Agora, qual porcentagem do seu faturamento vira custo variável?\n"
-                 f"(impostos, comissões, matéria-prima)\n\n"
-                 f"Digite um número de 0 a 100:"
-        )
-    elif current_step == 2:
-        update_company(company_id, {"variable_cost_percent": value})
-        update_user(user["id"], {"onboarding_step": 3, "current_action": "awaiting_cash_minimum"})
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"✅ Custo variável: {value}%\n\n"
-                 f"🛡️ Por último: qual valor mínimo de caixa você quer manter para se sentir seguro?\n"
-                 f"(ex: 10000 para cobrir 2 meses de custo fixo)\n\n"
-                 f"Digite o valor:"
-        )
-    elif current_step == 3:
-        update_company(company_id, {"cash_minimum": value})
-        update_user(user["id"], {"onboarding_step": 4, "state": "active", "current_action": None})
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"✅ Caixa mínimo: {format_currency(value)}\n\n"
-                 f"🎉 Configuração completa!\n\n"
-                 f"Amanhã cedo você recebe seu primeiro relatório.\n\n"
-                 f"Comandos disponíveis:\n"
-                 f"/receita - Registrar faturamento do dia\n"
-                 f"/despesa - Registrar despesa do dia\n"
-                 f"/relatorio - Ver situação atual agora\n"
-                 f"/ajuda - Ver todos os comandos"
-        )
+    await _send_onboarding_question(context, chat_id, current_step, company)
 
 
 async def _send_onboarding_question(context: ContextTypes.DEFAULT_TYPE, chat_id: int, step: int, company: dict) -> None:
