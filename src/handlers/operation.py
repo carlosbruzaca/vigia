@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import date, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
 from src.database import get_supabase
@@ -21,6 +21,51 @@ def get_entries_by_company(company_id: str) -> list[dict]:
     return result.data
 
 
+def get_yesterday_revenue(company_id: str) -> float:
+    supabase = get_supabase()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    result = supabase.table("vigia_entries").select("amount").eq("company_id", company_id).eq("type", "revenue").eq("entry_date", yesterday).execute()
+    return sum(r["amount"] for r in result.data)
+
+
+def get_avg_revenue_7days(company_id: str) -> float:
+    supabase = get_supabase()
+    start_date = (date.today() - timedelta(days=7)).isoformat()
+    result = supabase.table("vigia_entries").select("amount").eq("company_id", company_id).eq("type", "revenue").gte("entry_date", start_date).execute()
+    revenues = [r["amount"] for r in result.data]
+    return sum(revenues) / 7 if revenues else 0
+
+
+def get_cash_balance(company_id: str) -> float:
+    supabase = get_supabase()
+    result = supabase.table("vigia_entries").select("amount", "type").eq("company_id", company_id).execute()
+    cash = 0
+    for r in result.data:
+        if r["type"] == "revenue":
+            cash += r["amount"]
+        else:
+            cash -= r["amount"]
+    return cash
+
+
+def get_overdue_receivables(company_id: str) -> tuple[int, float]:
+    supabase = get_supabase()
+    result = supabase.table("vigia_receivables").select("amount").eq("company_id", company_id).eq("status", "pending").execute()
+    count = len(result.data)
+    total = sum(r["amount"] for r in result.data)
+    return count, total
+
+
+def calculate_daily_burn(fixed_cost_avg: float, avg_daily_revenue: float, variable_percent: float) -> float:
+    return (fixed_cost_avg / 30) + (avg_daily_revenue * variable_percent / 100)
+
+
+def calculate_runway(cash_balance: float, daily_burn: float) -> int:
+    if daily_burn <= 0:
+        return 999
+    return int(cash_balance / daily_burn)
+
+
 def create_entry(data: dict) -> dict:
     supabase = get_supabase()
     result = supabase.table("vigia_entries").insert(data).execute()
@@ -33,26 +78,6 @@ def update_company(company_id: str, data: dict) -> dict | None:
     if result.data:
         return result.data[0]
     return None
-
-
-def calculate_cash_balance(company_id: str) -> float:
-    entries = get_entries_by_company(company_id)
-    cash = 0
-    for entry in entries:
-        if entry["type"] == "revenue":
-            cash += entry["amount"]
-        elif entry["type"] == "expense":
-            cash -= entry["amount"]
-    return cash
-
-
-def calculate_monthly_burn(company_id: str) -> float:
-    from datetime import date, timedelta
-    supabase = get_supabase()
-    start_date = (date.today() - timedelta(days=30)).isoformat()
-    result = supabase.table("vigia_entries").select("amount").eq("company_id", company_id).eq("type", "expense").gte("entry_date", start_date).execute()
-    total = sum(entry["amount"] for entry in result.data)
-    return total
 
 
 def format_currency(value: float) -> str:
@@ -94,7 +119,7 @@ async def process_operation(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     elif text.startswith("/despesa"):
         await _handle_expense(context, chat_id, company, text)
     elif text.startswith("/relatorio"):
-        await _handle_report(context, chat_id, company)
+        await _handle_report(context, chat_id, company, first_name)
     elif text.startswith("/ajuda") or text.startswith("/help"):
         await _handle_help(context, chat_id)
     else:
@@ -169,25 +194,46 @@ async def _handle_expense(context: ContextTypes.DEFAULT_TYPE, chat_id: int, comp
     )
 
 
-async def _handle_report(context: ContextTypes.DEFAULT_TYPE, chat_id: int, company: dict) -> None:
-    cash_balance = calculate_cash_balance(company["id"])
-    monthly_burn = calculate_monthly_burn(company["id"])
-    fixed_cost = company.get("fixed_cost_avg", 0)
-    cash_minimum = company.get("cash_minimum", 5000)
+async def _handle_report(context: ContextTypes.DEFAULT_TYPE, chat_id: int, company: dict, user_name: str = "Cliente") -> None:
+    company_id = company["id"]
     
-    days_of_cash = monthly_burn / 30 if monthly_burn > 0 else 999
-    runway_days = cash_balance / (monthly_burn / 30) if monthly_burn > 0 else 999
+    yesterday_revenue = get_yesterday_revenue(company_id)
+    avg_revenue = get_avg_revenue_7days(company_id)
+    cash_balance = get_cash_balance(company_id)
+    overdue_count, overdue_total = get_overdue_receivables(company_id)
     
-    message = f"📊 *Relatório - {company.get('name', 'Empresa')}*\n\n"
-    message += f"💰 Caixa atual: {format_currency(cash_balance)}\n"
-    message += f"🔥 Burn rate mensal: {format_currency(monthly_burn)}\n"
-    message += f"📅 Custos fixos: {format_currency(fixed_cost)}/mês\n"
-    message += f"🛡️ Caixa mínimo: {format_currency(cash_minimum)}\n"
+    fixed_cost = company.get("fixed_cost_avg", 0) or 0
+    variable_percent = company.get("variable_cost_percent", 30) or 30
     
-    if cash_balance < cash_minimum:
-        message += f"\n⚠️ *Atenção: Caixa abaixo do mínimo!*"
+    daily_burn = calculate_daily_burn(fixed_cost, avg_revenue, variable_percent)
+    runway_days = calculate_runway(cash_balance, daily_burn)
     
-    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
+    if avg_revenue > 0:
+        variation = ((yesterday_revenue - avg_revenue) / avg_revenue) * 100
+        variation_str = f"{variation:+.0f}%"
+    else:
+        variation_str = "N/A"
+    
+    message = f"📊 Bom dia, {user_name}!\n\n"
+    
+    if yesterday_revenue > 0:
+        message += f"Ontem você faturou {format_currency(yesterday_revenue)} ({variation_str} vs média da semana).\n"
+    else:
+        message += "Ontem não houve faturamento registrado.\n"
+    
+    if overdue_count > 0:
+        message += f"{overdue_count} cliente(s) em atraso somando {format_currency(overdue_total)}.\n"
+    
+    message += f"Seu caixa atual é {format_currency(cash_balance)}.\n\n"
+    
+    if runway_days <= 10:
+        message += f"🔴 Atenção: em {runway_days} dias você entra no vermelho se nada mudar."
+    elif runway_days <= 20:
+        message += f"⚠️ Atenção: em {runway_days} dias você fica abaixo do mínimo."
+    else:
+        message += f"✅ Tudo OK! Você tem {runway_days} dias de caixa."
+    
+    await context.bot.send_message(chat_id=chat_id, text=message)
 
 
 async def _handle_help(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
