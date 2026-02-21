@@ -40,9 +40,7 @@ async def lifespan(app: FastAPI):
     telegram_app = Application.builder().token(settings.telegram_bot_token).build()
     
     telegram_app.add_handler(CommandHandler("start", route_message))
-    telegram_app.add_handler(CommandHandler("ajuda", route_message))
-    telegram_app.add_handler(CommandHandler("help", route_message))
-    telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, route_message))
+    telegram_app.add_handler(MessageHandler(filters.TEXT, route_message))
     
     await telegram_app.initialize()
     await telegram_app.start()

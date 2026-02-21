@@ -15,8 +15,8 @@
 | API | FastAPI |
 | Bot | python-telegram-bot |
 | Banco | Supabase (PostgreSQL) |
-| APScheduler |
-| Agendamento | Deploy | Docker + Coolify (Hostinger VPS) |
+| Agendamento | APScheduler |
+| Deploy | Docker + Coolify (Hostinger VPS) |
 
 ## Arquitetura de Estados
 
@@ -65,23 +65,25 @@ src/
 │   ├── router.py        # Roteamento por estado
 │   ├── onboarding.py    # Coleta dados iniciais
 │   ├── operation.py     # Comandos /receita, /despesa
-│   └── daily_report.py  # Relatório diário 7h
+│   └── daily_report.py # Relatório diário 7h
 ├── services/
-│   ├── supabase.py      # Queries Supabase
-│   ├── telegram.py      # Envio de mensagens
-│   └── scheduler.py     # Agendamento
+│   ├── supabase.py     # Queries Supabase
+│   ├── telegram.py     # Envio de mensagens
+│   └── scheduler.py    # Agendamento
 └── utils/
-    ├── burn_rate.py     # Cálculos financeiros
-    └── formatters.py    # Formatação de mensagens
+    ├── burn_rate.py    # Cálculos financeiros
+    └── formatters.py   # Formatação de mensagens
 ```
 
 ## Comandos do Bot
 
-- `/start` - Iniciar/cadastro (apenas para usuários new/onboarding)
-- `/receita <valor>` - Registrar faturamento (apenas active)
-- `/despesa <valor>` - Registrar despesa (apenas active)
-- `/relatorio` - Ver situação atual (apenas active)
-- `/ajuda` - Ver comandos (qualquer estado)
+| Comando | Estado | Descrição |
+|---------|--------|-----------|
+| `/start` | new/onboarding | Iniciar cadastro |
+| `/receita <valor>` | active | Registrar faturamento |
+| `/despesa <valor>` | active | Registrar despesa |
+| `/relatorio` | active | Ver situação atual |
+| `/ajuda` | qualquer | Ver comandos |
 
 ## Mensagens do Bot
 
@@ -118,7 +120,8 @@ Use /relatorio para ver a situacao do seu caixa!
 
 ## Status Atual
 
-- Banco configurado e funcionando
-- Onboarding completo
-- Comandos básicos implementados
-- /ajuda em teste
+- ✅ Banco configurado e funcionando
+- ✅ Onboarding completo
+- ✅ /ajuda funcionando
+- ✅ /start funcionando
+- ⏳ /receita, /despesa, /relatorio em teste
