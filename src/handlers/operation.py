@@ -191,12 +191,24 @@ async def _handle_report(context: ContextTypes.DEFAULT_TYPE, chat_id: int, compa
 
 
 async def _handle_help(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="📋 *Comandos disponíveis*\n\n"
-             "/receita <valor> - Registrar faturamento\n"
-             "/despesa <valor> - Registrar despesa\n"
-             "/relatorio - Ver situação atual\n"
-             "/ajuda - Mostrar esta ajuda",
-        parse_mode="Markdown"
-    )
+    message = """📋 *Ajuda - VigIA*
+
+💰 *Receitas*
+/receita 1500
+→ Registra o faturamento do dia
+
+📤 *Despesas*
+/despesa 500
+→ Registra uma despesa do dia
+
+📊 *Relatório*
+/relatorio
+→ Envia relatório detalhado do momento
+
+📑 *Outros*
+/receber - Cadastrar cliente em atraso (em breve)
+/ajuda - Mostra esta mensagem
+
+💡 *Dica:* Use /relatorio a qualquer momento para ver a situação do seu caixa!"""
+
+    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")

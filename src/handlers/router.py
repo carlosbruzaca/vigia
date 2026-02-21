@@ -96,6 +96,12 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         pass
 
     state = user.get("state", "new")
+    message_text_lower = message_text.lower().strip() if message_text else ""
+    
+    if message_text_lower.startswith("/ajuda"):
+        from src.handlers.operation import process_operation
+        await process_operation(update, context, user, message_text)
+        return
 
     if state == "new":
         await _send_welcome_message(update, context, user)

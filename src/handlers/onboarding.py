@@ -77,8 +77,16 @@ def format_currency(value: float) -> str:
 
 
 async def process_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict, message_text: str | None) -> None:
+    from src.handlers.operation import process_operation
+    from src.handlers.router import get_user_by_chat_id
+    
     chat_id = update.effective_chat.id
     company_id = user.get("company_id")
+    
+    current_user = get_user_by_chat_id(chat_id)
+    if current_user and current_user.get("state") == "active":
+        await process_operation(update, context, current_user, message_text)
+        return
     
     if not company_id:
         await context.bot.send_message(chat_id=chat_id, text="❌ Erro: empresa não encontrada")
@@ -136,7 +144,7 @@ async def process_onboarding(update: Update, context: ContextTypes.DEFAULT_TYPE,
                      f"/relatorio - Ver situação atual agora\n"
                      f"/ajuda - Ver todos os comandos"
             )
-        return
+            return
     
     await _send_onboarding_question(context, chat_id, current_step, company)
 
