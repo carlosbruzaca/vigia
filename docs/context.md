@@ -15,14 +15,21 @@
 | API | FastAPI |
 | Bot | python-telegram-bot |
 | Banco | Supabase (PostgreSQL) |
-| Agendamento | APScheduler |
-| Deploy | Docker + Coolify (Hostinger VPS) |
+| APScheduler |
+| Agendamento | Deploy | Docker + Coolify (Hostinger VPS) |
 
 ## Arquitetura de Estados
 
 ```
 new → onboarding → active → paused → blocked
 ```
+
+## Fluxo do Usuário
+
+1. **new**: Usuário envia qualquer mensagem → recebe mensagem de boas-vindas
+2. **new + /start**: Muda para onboarding e começa perguntas
+3. **onboarding**: Coleta custo fixo → % variável → caixa mínimo
+4. **active**: Usuário pode usar /receita, /despesa, /relatorio, /ajuda
 
 ## Tabelas do Banco (Supabase)
 
@@ -38,15 +45,14 @@ new → onboarding → active → paused → blocked
 
 ### Supabase
 - **URL:** https://lalamefcxccturkgssmk.supabase.co
-- **Chave anon:** eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhbGFtZWZjeGNjdHVya2dzc21rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MjM3ODUsImV4cCI6MjA4Njk5OTc4NX0.slZjfNC0jeUSnl7_DpB6PWtYi7P7gCy7ud5beoQoE7E
-- **Service role:** eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhbGFtZWZjeGNjdHVya2dzc21rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTQyMzc4NSwiZXhwIjoyMDg2OTk5Nzg1fQ.1NClJwvUoWbs_JZ32LFjwdwrTtDhgpVH_ZXYwI9GIuA
+- **Anon Key:** eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhbGFtZWZjeGNjdHVya2dzc21rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MjM3ODUsImV4cCI6MjA4Njk5OTc4NX0.slZjfNC0jeUSnl7_DpB6PWtYi7P7gCy7ud5beoQoE7E
+- **Service Role:** eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhbGFtZWZjeGNjdHVya2dzc21rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTQyMzc4NSwiZXhwIjoyMDg2OTk5Nzg1fQ.1NClJwvUoWbs_JZ32LFjwdwrTtDhgpVH_ZXYwI9GIuA
 
 ### Telegram
-- **Bot Token:** your_telegram_bot_token_here (precisa ser configurado)
+- **Bot Token:** 8578648583:AAEecREdgPw89RnUeOrMORZs73TfUsZCm00
 
 ### VPS
 - **Host:** Hostinger (gerenciado pelo Coolify)
-- **URL do app:** A definir
 
 ## Estrutura de Arquivos
 
@@ -71,15 +77,48 @@ src/
 
 ## Comandos do Bot
 
-- `/start` - Iniciar/cadastro
-- `/receita <valor>` - Registrar faturamento
-- `/despesa <valor>` - Registrar despesa
-- `/relatorio` - Ver situação atual
-- `/ajuda` - Ver comandos
+- `/start` - Iniciar/cadastro (apenas para usuários new/onboarding)
+- `/receita <valor>` - Registrar faturamento (apenas active)
+- `/despesa <valor>` - Registrar despesa (apenas active)
+- `/relatorio` - Ver situação atual (apenas active)
+- `/ajuda` - Ver comandos (qualquer estado)
+
+## Mensagens do Bot
+
+### Boas-vindas (state=new)
+```
+👋 Olá, {nome}! Bem-vindo ao VigIA!
+
+🛡️ Sou seu guardião financeiro. Estou aqui para garantir que você saiba o que está acontecendo com o caixa da sua empresa - antes que o pior problema apareça: ficar sem dinheiro.
+
+💡 Como funciona:
+• Todo dia você me informa suas receitas e despesas
+• Todo dia 7h eu te mando um relatório com a situação do caixa
+• Se algo precisar de atenção, eu te aviso antes
+
+🚀 Para começar, é rápido! Preciso só de 3 informações:
+1. Seu custo fixo mensal
+2. Quanto % do faturamento vira custo variável
+3. Quanto você quer ter de caixa mínimo
+
+Digite /start quando quiser começar!
+```
+
+### Ajuda
+```
+📋 AJUDA - VigIA
+
+/receita <valor> - Registrar faturamento
+/despesa <valor> - Registrar despesa
+/relatorio - Ver situacao atual
+/ajuda - Esta mensagem
+
+Use /relatorio para ver a situacao do seu caixa!
+```
 
 ## Status Atual
 
-- Banco configurado (tabelas criadas, vazio)
-- Código implementado
-- Deploy em andamento (Coolify/Hostinger)
-- Telegram erro precisa debugar
+- Banco configurado e funcionando
+- Onboarding completo
+- Comandos básicos implementados
+- /ajuda em teste

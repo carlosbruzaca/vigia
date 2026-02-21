@@ -96,7 +96,10 @@ async def route_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         pass
 
     state = user.get("state", "new")
-    message_text_lower = message_text.lower().strip() if message_text else ""
+    message_text_raw = message_text if message_text else ""
+    message_text_lower = message_text_raw.lower().strip()
+    
+    logger.info(f"Mensagem recebida: '{message_text_lower}' de {chat_id}")
     
     if message_text_lower.startswith("/ajuda") or message_text_lower.startswith("/help"):
         logger.info(f"Ajuda chamada por {chat_id}: {message_text}")
